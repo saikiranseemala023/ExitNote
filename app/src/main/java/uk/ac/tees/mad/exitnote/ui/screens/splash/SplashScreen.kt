@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -91,6 +92,61 @@ fun SplashScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Tagline
+            Text(
+                text = "One last reminder before you go.",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color(0xFF7F8C8D),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp)
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "Exit Note – Splash Screen")
+@Composable
+fun ExitNoteSplashExactPreview() {
+    val alphaAnimation = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        alphaAnimation.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 1000)
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF5F7FA)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .alpha(alphaAnimation.value)
+                .padding(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.LocationOn,
+                contentDescription = "Exit Note Logo",
+                modifier = Modifier.size(100.dp),
+                tint = Color(0xFF6B7FD7)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Exit Note",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2C3E50),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Text(
                 text = "One last reminder before you go.",
                 fontSize = 16.sp,

@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.rememberNavController
+import uk.ac.tees.mad.exitnote.navigation.ExitNoteNavGraph
 import uk.ac.tees.mad.exitnote.ui.screens.splash.SplashScreen
 import uk.ac.tees.mad.exitnote.ui.theme.ExitNoteTheme
 import uk.ac.tees.mad.exitnote.viewmodel.ExitNoteViewModel
@@ -22,12 +24,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ExitNoteTheme {
-                val viewModel : ExitNoteViewModel = viewModel()
-                SplashScreen(
-                    viewModel = viewModel,
-                    onNavigateToAuth = {},
-                    onNavigateToHome = {}
-                ) { }
+                val navController = rememberNavController()
+                ExitNoteNavGraph(
+                    navController
+                )
             }
         }
     }
