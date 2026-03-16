@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "635396862405",
+    "project_id": "exit-note",
+    "storage_bucket": "exit-note.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:635396862405:android:8aed21f0da00d527379bac",
+        "android_client_info": {
+          "package_name": "uk.ac.tees.mad.exitnote"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVSwt13diM28R9ni900xzfn7ezNkVPLY8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
