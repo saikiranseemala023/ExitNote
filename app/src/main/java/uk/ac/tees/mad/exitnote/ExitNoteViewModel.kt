@@ -1,18 +1,53 @@
 package uk.ac.tees.mad.exitnote.viewmodel
 
 import android.content.Context
+import android.util.Log
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import uk.ac.tees.mad.exitnote.ExitNoteApplication
 
+// DataStore extension
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "exit_note_prefs")
 
+/**
+ * Single ViewModel for the entire Exit Note app
+ * Handles all business logic with Firebase authentication and DataStore
+ */
 class ExitNoteViewModel : ViewModel() {
 
     private val context: Context = ExitNoteApplication.instance.applicationContext
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val dataStore = context.dataStore
+
+    // DataStore Keys
+    private object PrefsKeys {
+        val HOME_LATITUDE = doublePreferencesKey("home_latitude")
+        val HOME_LONGITUDE = doublePreferencesKey("home_longitude")
+        val HOME_RADIUS = floatPreferencesKey("home_radius")
+        val HOME_LOCATION_NAME = stringPreferencesKey("home_location_name")
+        val IS_HOME_SET = booleanPreferencesKey("is_home_set")
+        val IS_TRACKING_ENABLED = booleanPreferencesKey("is_tracking_enabled")
+        val LAST_EXIT_TIME = longPreferencesKey("last_exit_time")
+    }
 
     // UI State flows
     private val _splashState = MutableStateFlow<SplashState>(SplashState.Loading)
@@ -45,7 +80,55 @@ class ExitNoteViewModel : ViewModel() {
     val currentLocation: StateFlow<LocationData?> = _currentLocation.asStateFlow()
 
     init {
-        // Initialization logic will be added in next sprint
+        // Check if user is already authenticated
+        checkAuthState()
+        loadStoredData()
+    }
+
+    private fun checkAuthState() {
+        viewModelScope.launch {
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                _userState.value = UserState(
+                    userId = currentUser.uid,
+                    email = currentUser.email,
+                    displayName = currentUser.displayName,
+                    isAuthenticated = true
+                )
+            }
+        }
+    }
+
+    private fun loadStoredData() {
+        viewModelScope.launch {
+            try {
+                val prefs = dataStore.data.first()
+
+                // Load home location
+                val latitude = prefs[PrefsKeys.HOME_LATITUDE]
+                val longitude = prefs[PrefsKeys.HOME_LONGITUDE]
+                val radius = prefs[PrefsKeys.HOME_RADIUS] ?: 250f
+                val locationName = prefs[PrefsKeys.HOME_LOCATION_NAME]
+                val isSet = prefs[PrefsKeys.IS_HOME_SET] ?: false
+
+                if (latitude != null && longitude != null && isSet) {
+                    _homeLocationState.value = HomeLocationState(
+                        latitude = latitude,
+                        longitude = longitude,
+                        radius = radius,
+                        locationName = locationName,
+                        isSet = true
+                    )
+                }
+
+                // Load tracking state
+                _isTrackingEnabled.value = prefs[PrefsKeys.IS_TRACKING_ENABLED] ?: false
+                _lastExitTime.value = prefs[PrefsKeys.LAST_EXIT_TIME]
+
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error loading stored data: ${e.message}")
+            }
+        }
     }
 
     // ========== Splash Screen Methods ==========
@@ -53,11 +136,40 @@ class ExitNoteViewModel : ViewModel() {
     fun checkInitialState() {
         viewModelScope.launch {
             _splashState.value = SplashState.Loading
-            // TODO: Implementation in next sprint
-            // Will check:
-            // 1. If user is authenticated
-            // 2. If home location is set
-            // 3. Navigate accordingly
+
+            try {
+                val currentUser = auth.currentUser
+
+                if (currentUser == null) {
+                    // User not authenticated
+                    _splashState.value = SplashState(
+                        isLoading = false,
+                        shouldNavigateTo = NavigationDestination.AUTH
+                    )
+                } else {
+                    // User authenticated, check if home location is set
+                    val prefs = dataStore.data.first()
+                    val isHomeSet = prefs[PrefsKeys.IS_HOME_SET] ?: false
+
+                    if (isHomeSet) {
+                        _splashState.value = SplashState(
+                            isLoading = false,
+                            shouldNavigateTo = NavigationDestination.HOME
+                        )
+                    } else {
+                        _splashState.value = SplashState(
+                            isLoading = false,
+                            shouldNavigateTo = NavigationDestination.SETUP
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error checking initial state: ${e.message}")
+                _splashState.value = SplashState(
+                    isLoading = false,
+                    shouldNavigateTo = NavigationDestination.AUTH
+                )
+            }
         }
     }
 
@@ -67,8 +179,56 @@ class ExitNoteViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            // TODO: Implementation in next sprint
-            _isLoading.value = false
+            _authState.value = AuthState(isSigningIn = true)
+
+            try {
+                val result = auth.signInWithEmailAndPassword(email, password).await()
+                val user = result.user
+
+                if (user != null) {
+                    _userState.value = UserState(
+                        userId = user.uid,
+                        email = user.email,
+                        displayName = user.displayName,
+                        isAuthenticated = true
+                    )
+
+                    _authState.value = AuthState(isSuccess = true)
+
+                    // Check if home location is set
+                    val prefs = dataStore.data.first()
+                    val isHomeSet = prefs[PrefsKeys.IS_HOME_SET] ?: false
+
+                    if (!isHomeSet) {
+                        // Navigate to setup
+                        _splashState.value = SplashState(
+                            isLoading = false,
+                            shouldNavigateTo = NavigationDestination.SETUP
+                        )
+                    }
+                } else {
+                    _errorMessage.value = "Sign in failed. Please try again."
+                    _authState.value = AuthState(error = "Sign in failed")
+                }
+            } catch (e: FirebaseAuthException) {
+                val errorMsg = when (e.errorCode) {
+                    "ERROR_INVALID_EMAIL" -> "Invalid email address"
+                    "ERROR_WRONG_PASSWORD" -> "Incorrect password"
+                    "ERROR_USER_NOT_FOUND" -> "No account found with this email"
+                    "ERROR_USER_DISABLED" -> "This account has been disabled"
+                    "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Try again later"
+                    else -> "Sign in failed: ${e.message}"
+                }
+                _errorMessage.value = errorMsg
+                _authState.value = AuthState(error = errorMsg)
+                Log.e("ExitNoteVM", "Sign in error: ${e.message}")
+            } catch (e: Exception) {
+                _errorMessage.value = "An error occurred: ${e.message}"
+                _authState.value = AuthState(error = e.message)
+                Log.e("ExitNoteVM", "Sign in error: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
@@ -76,25 +236,83 @@ class ExitNoteViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            // TODO: Implementation in next sprint
-            _isLoading.value = false
-        }
-    }
+            _authState.value = AuthState(isSigningUp = true)
 
-    fun signInWithGoogle() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            // TODO: Implementation in next sprint
-            _isLoading.value = false
+            try {
+                val result = auth.createUserWithEmailAndPassword(email, password).await()
+                val user = result.user
+
+                if (user != null) {
+                    // Create user document in Firestore
+                    val userDoc = hashMapOf(
+                        "uid" to user.uid,
+                        "email" to user.email,
+                        "createdAt" to System.currentTimeMillis(),
+                        "homeLocationSet" to false
+                    )
+
+                    firestore.collection("users")
+                        .document(user.uid)
+                        .set(userDoc)
+                        .await()
+
+                    _userState.value = UserState(
+                        userId = user.uid,
+                        email = user.email,
+                        displayName = user.displayName,
+                        isAuthenticated = true
+                    )
+
+                    _authState.value = AuthState(isSuccess = true)
+
+                    // Navigate to setup after sign up
+                    _splashState.value = SplashState(
+                        isLoading = false,
+                        shouldNavigateTo = NavigationDestination.SETUP
+                    )
+                } else {
+                    _errorMessage.value = "Sign up failed. Please try again."
+                    _authState.value = AuthState(error = "Sign up failed")
+                }
+            } catch (e: FirebaseAuthException) {
+                val errorMsg = when (e.errorCode) {
+                    "ERROR_INVALID_EMAIL" -> "Invalid email address"
+                    "ERROR_WEAK_PASSWORD" -> "Password is too weak. Use at least 6 characters"
+                    "ERROR_EMAIL_ALREADY_IN_USE" -> "An account already exists with this email"
+                    "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Try again later"
+                    else -> "Sign up failed: ${e.message}"
+                }
+                _errorMessage.value = errorMsg
+                _authState.value = AuthState(error = errorMsg)
+                Log.e("ExitNoteVM", "Sign up error: ${e.message}")
+            } catch (e: Exception) {
+                _errorMessage.value = "An error occurred: ${e.message}"
+                _authState.value = AuthState(error = e.message)
+                Log.e("ExitNoteVM", "Sign up error: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
     fun signOut() {
         viewModelScope.launch {
-            // TODO: Implementation in next sprint
-            _userState.value = UserState.NotAuthenticated
-            _authState.value = AuthState.Initial
+            try {
+                auth.signOut()
+                _userState.value = UserState.NotAuthenticated
+                _authState.value = AuthState.Initial
+                _homeLocationState.value = HomeLocationState.NotSet
+
+                // Clear DataStore
+                dataStore.edit { prefs ->
+                    prefs.clear()
+                }
+
+                Log.d("ExitNoteVM", "User signed out successfully")
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Sign out error: ${e.message}")
+                _errorMessage.value = "Error signing out: ${e.message}"
+            }
         }
     }
 
@@ -104,8 +322,8 @@ class ExitNoteViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            // TODO: Implementation in next sprint
-            // Will use GPS to get current location
+            _homeLocationState.value = _homeLocationState.value.copy(isCapturing = true)
+            // TODO: Implementation with location services in next part
             _isLoading.value = false
         }
     }
@@ -113,22 +331,76 @@ class ExitNoteViewModel : ViewModel() {
     fun setHomeLocation(latitude: Double, longitude: Double, radius: Float) {
         viewModelScope.launch {
             _isLoading.value = true
-            // TODO: Implementation in next sprint
-            // Will save to SharedPreferences/DataStore
-            _isLoading.value = false
+
+            try {
+                // Save to DataStore
+                dataStore.edit { prefs ->
+                    prefs[PrefsKeys.HOME_LATITUDE] = latitude
+                    prefs[PrefsKeys.HOME_LONGITUDE] = longitude
+                    prefs[PrefsKeys.HOME_RADIUS] = radius
+                    prefs[PrefsKeys.IS_HOME_SET] = true
+                }
+
+                // Update Firestore
+                val currentUser = auth.currentUser
+                if (currentUser != null) {
+                    val locationData = hashMapOf(
+                        "latitude" to latitude,
+                        "longitude" to longitude,
+                        "radius" to radius,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+
+                    firestore.collection("users")
+                        .document(currentUser.uid)
+                        .update("homeLocation", locationData, "homeLocationSet", true)
+                        .await()
+                }
+
+                // Update state
+                _homeLocationState.value = HomeLocationState(
+                    latitude = latitude,
+                    longitude = longitude,
+                    radius = radius,
+                    isSet = true
+                )
+
+                Log.d("ExitNoteVM", "Home location saved successfully")
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error saving home location: ${e.message}")
+                _errorMessage.value = "Error saving location: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
     fun updateGeofenceRadius(radius: Float) {
         viewModelScope.launch {
-            // TODO: Implementation in next sprint
+            try {
+                dataStore.edit { prefs ->
+                    prefs[PrefsKeys.HOME_RADIUS] = radius
+                }
+
+                _homeLocationState.value = _homeLocationState.value.copy(radius = radius)
+
+                // Update Firestore
+                val currentUser = auth.currentUser
+                if (currentUser != null) {
+                    firestore.collection("users")
+                        .document(currentUser.uid)
+                        .update("homeLocation.radius", radius)
+                        .await()
+                }
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error updating radius: ${e.message}")
+            }
         }
     }
 
     fun getLocationName(latitude: Double, longitude: Double) {
         viewModelScope.launch {
-            // TODO: Implementation in next sprint
-            // Will use OpenStreetMap Nominatim API
+            // TODO: Implementation with OpenStreetMap API in next part
         }
     }
 
@@ -136,28 +408,45 @@ class ExitNoteViewModel : ViewModel() {
 
     fun toggleLocationTracking(enabled: Boolean) {
         viewModelScope.launch {
-            _isTrackingEnabled.value = enabled
-            // TODO: Implementation in next sprint
-            // Will start/stop geofence monitoring
+            try {
+                dataStore.edit { prefs ->
+                    prefs[PrefsKeys.IS_TRACKING_ENABLED] = enabled
+                }
+
+                _isTrackingEnabled.value = enabled
+
+                // Update Firestore
+                val currentUser = auth.currentUser
+                if (currentUser != null) {
+                    firestore.collection("users")
+                        .document(currentUser.uid)
+                        .update("trackingEnabled", enabled)
+                        .await()
+                }
+
+                Log.d("ExitNoteVM", "Tracking ${if (enabled) "enabled" else "disabled"}")
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error toggling tracking: ${e.message}")
+                _errorMessage.value = "Error updating tracking: ${e.message}"
+            }
         }
     }
 
     fun checkIfOutsideGeofence() {
         viewModelScope.launch {
-            // TODO: Implementation in next sprint
-            // Will use Haversine formula to calculate distance
+            // TODO: Implementation with Haversine formula in next part
         }
     }
 
     // ========== Notification Methods ==========
 
     fun triggerExitNotification() {
-        // TODO: Implementation in next sprint
+        // TODO: Implementation in next part
     }
 
     fun snoozeNotification(minutes: Int) {
         viewModelScope.launch {
-            // TODO: Implementation in next sprint
+            // TODO: Implementation in next part
         }
     }
 
@@ -165,8 +454,22 @@ class ExitNoteViewModel : ViewModel() {
 
     fun resetAppData() {
         viewModelScope.launch {
-            // TODO: Implementation in next sprint
-            // Will clear all local data
+            try {
+                // Clear DataStore
+                dataStore.edit { prefs ->
+                    prefs.clear()
+                }
+
+                // Reset states
+                _homeLocationState.value = HomeLocationState.NotSet
+                _isTrackingEnabled.value = false
+                _lastExitTime.value = null
+
+                Log.d("ExitNoteVM", "App data reset successfully")
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error resetting data: ${e.message}")
+                _errorMessage.value = "Error resetting data: ${e.message}"
+            }
         }
     }
 
