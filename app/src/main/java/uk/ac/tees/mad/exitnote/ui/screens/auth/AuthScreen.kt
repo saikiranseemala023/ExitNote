@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,12 +50,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uk.ac.tees.mad.exitnote.viewmodel.ExitNoteViewModel
 
-/**
- * Authentication Screen - Sign in or Sign up
- * Supports email/password and Google authentication
- */
 @Composable
 fun AuthScreen(
     viewModel: ExitNoteViewModel,
@@ -67,8 +65,21 @@ fun AuthScreen(
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
+    val homeLocationState by viewModel.homeLocationState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(authState.isSuccess) {
+        if (authState.isSuccess) {
+            if (homeLocationState.isSet) {
+                onNavigateToHome()
+            } else {
+                onNavigateToSetup(email)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -118,7 +129,7 @@ fun AuthScreen(
                 value = email,
                 onValueChange = {
                     email = it
-                    errorMessage = null
+                    viewModel.clearError()
                 },
                 label = { Text("Email") },
                 leadingIcon = {
@@ -145,7 +156,7 @@ fun AuthScreen(
                 value = password,
                 onValueChange = {
                     password = it
-                    errorMessage = null
+                    viewModel.clearError()
                 },
                 label = { Text("Password") },
                 visualTransformation = if (passwordVisible)
@@ -185,7 +196,7 @@ fun AuthScreen(
                     value = confirmPassword,
                     onValueChange = {
                         confirmPassword = it
-                        errorMessage = null
+                        viewModel.clearError()
                     },
                     label = { Text("Confirm Password") },
                     visualTransformation = if (confirmPasswordVisible)
@@ -234,20 +245,15 @@ fun AuthScreen(
             Button(
                 onClick = {
                     when {
-                        email.isBlank() -> errorMessage = "Please enter your email"
-                        password.isBlank() -> errorMessage = "Please enter your password"
-                        isSignUp && confirmPassword.isBlank() ->
-                            errorMessage = "Please confirm your password"
-                        isSignUp && password != confirmPassword ->
-                            errorMessage = "Passwords do not match"
+                        email.isBlank() -> viewModel.setError("Email cannot be empty")
+                        password.isBlank() -> viewModel.setError("Password cannot be empty")
+                        isSignUp && confirmPassword.isBlank() -> viewModel.setError("Confirm password cannot be empty")
+                        isSignUp && password != confirmPassword -> viewModel.setError("Passwords do not match")
                         else -> {
-                            isLoading = true
                             if (isSignUp) {
                                 viewModel.signUpWithEmail(email, password)
-                                // TODO: Handle response
                             } else {
                                 viewModel.signInWithEmail(email, password)
-                                // TODO: Handle response
                             }
                         }
                     }
@@ -294,7 +300,7 @@ fun AuthScreen(
                 TextButton(
                     onClick = {
                         isSignUp = !isSignUp
-                        errorMessage = null
+                        viewModel.clearError()
                         password = ""
                         confirmPassword = ""
                     }

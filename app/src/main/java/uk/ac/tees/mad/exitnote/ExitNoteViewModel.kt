@@ -24,13 +24,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import uk.ac.tees.mad.exitnote.ExitNoteApplication
 
-// DataStore extension
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "exit_note_prefs")
 
-/**
- * Single ViewModel for the entire Exit Note app
- * Handles all business logic with Firebase authentication and DataStore
- */
+
 class ExitNoteViewModel : ViewModel() {
 
     private val context: Context = ExitNoteApplication.instance.applicationContext
@@ -38,7 +34,6 @@ class ExitNoteViewModel : ViewModel() {
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
     private val dataStore = context.dataStore
 
-    // DataStore Keys
     private object PrefsKeys {
         val HOME_LATITUDE = doublePreferencesKey("home_latitude")
         val HOME_LONGITUDE = doublePreferencesKey("home_longitude")
@@ -49,7 +44,6 @@ class ExitNoteViewModel : ViewModel() {
         val LAST_EXIT_TIME = longPreferencesKey("last_exit_time")
     }
 
-    // UI State flows
     private val _splashState = MutableStateFlow<SplashState>(SplashState.Loading)
     val splashState: StateFlow<SplashState> = _splashState.asStateFlow()
 
@@ -68,23 +62,23 @@ class ExitNoteViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    // Location tracking state
     private val _isTrackingEnabled = MutableStateFlow(false)
     val isTrackingEnabled: StateFlow<Boolean> = _isTrackingEnabled.asStateFlow()
 
     private val _lastExitTime = MutableStateFlow<Long?>(null)
     val lastExitTime: StateFlow<Long?> = _lastExitTime.asStateFlow()
 
-    // Current location data
     private val _currentLocation = MutableStateFlow<LocationData?>(null)
     val currentLocation: StateFlow<LocationData?> = _currentLocation.asStateFlow()
 
     init {
-        // Check if user is already authenticated
         checkAuthState()
         loadStoredData()
     }
 
+    fun setError(msg : String){
+_errorMessage.value = msg
+    }
     private fun checkAuthState() {
         viewModelScope.launch {
             val currentUser = auth.currentUser
@@ -104,7 +98,6 @@ class ExitNoteViewModel : ViewModel() {
             try {
                 val prefs = dataStore.data.first()
 
-                // Load home location
                 val latitude = prefs[PrefsKeys.HOME_LATITUDE]
                 val longitude = prefs[PrefsKeys.HOME_LONGITUDE]
                 val radius = prefs[PrefsKeys.HOME_RADIUS] ?: 250f
@@ -121,7 +114,6 @@ class ExitNoteViewModel : ViewModel() {
                     )
                 }
 
-                // Load tracking state
                 _isTrackingEnabled.value = prefs[PrefsKeys.IS_TRACKING_ENABLED] ?: false
                 _lastExitTime.value = prefs[PrefsKeys.LAST_EXIT_TIME]
 
@@ -131,7 +123,6 @@ class ExitNoteViewModel : ViewModel() {
         }
     }
 
-    // ========== Splash Screen Methods ==========
 
     fun checkInitialState() {
         viewModelScope.launch {
@@ -141,13 +132,11 @@ class ExitNoteViewModel : ViewModel() {
                 val currentUser = auth.currentUser
 
                 if (currentUser == null) {
-                    // User not authenticated
                     _splashState.value = SplashState(
                         isLoading = false,
                         shouldNavigateTo = NavigationDestination.AUTH
                     )
                 } else {
-                    // User authenticated, check if home location is set
                     val prefs = dataStore.data.first()
                     val isHomeSet = prefs[PrefsKeys.IS_HOME_SET] ?: false
 
@@ -173,7 +162,6 @@ class ExitNoteViewModel : ViewModel() {
         }
     }
 
-    // ========== Authentication Methods ==========
 
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
@@ -195,12 +183,10 @@ class ExitNoteViewModel : ViewModel() {
 
                     _authState.value = AuthState(isSuccess = true)
 
-                    // Check if home location is set
                     val prefs = dataStore.data.first()
                     val isHomeSet = prefs[PrefsKeys.IS_HOME_SET] ?: false
 
                     if (!isHomeSet) {
-                        // Navigate to setup
                         _splashState.value = SplashState(
                             isLoading = false,
                             shouldNavigateTo = NavigationDestination.SETUP
@@ -243,7 +229,6 @@ class ExitNoteViewModel : ViewModel() {
                 val user = result.user
 
                 if (user != null) {
-                    // Create user document in Firestore
                     val userDoc = hashMapOf(
                         "uid" to user.uid,
                         "email" to user.email,
@@ -265,7 +250,6 @@ class ExitNoteViewModel : ViewModel() {
 
                     _authState.value = AuthState(isSuccess = true)
 
-                    // Navigate to setup after sign up
                     _splashState.value = SplashState(
                         isLoading = false,
                         shouldNavigateTo = NavigationDestination.SETUP
@@ -303,7 +287,6 @@ class ExitNoteViewModel : ViewModel() {
                 _authState.value = AuthState.Initial
                 _homeLocationState.value = HomeLocationState.NotSet
 
-                // Clear DataStore
                 dataStore.edit { prefs ->
                     prefs.clear()
                 }
@@ -316,7 +299,6 @@ class ExitNoteViewModel : ViewModel() {
         }
     }
 
-    // ========== Home Location Setup Methods ==========
 
     fun captureCurrentLocation() {
         viewModelScope.launch {
@@ -333,7 +315,6 @@ class ExitNoteViewModel : ViewModel() {
             _isLoading.value = true
 
             try {
-                // Save to DataStore
                 dataStore.edit { prefs ->
                     prefs[PrefsKeys.HOME_LATITUDE] = latitude
                     prefs[PrefsKeys.HOME_LONGITUDE] = longitude
@@ -341,7 +322,6 @@ class ExitNoteViewModel : ViewModel() {
                     prefs[PrefsKeys.IS_HOME_SET] = true
                 }
 
-                // Update Firestore
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
                     val locationData = hashMapOf(
@@ -357,7 +337,6 @@ class ExitNoteViewModel : ViewModel() {
                         .await()
                 }
 
-                // Update state
                 _homeLocationState.value = HomeLocationState(
                     latitude = latitude,
                     longitude = longitude,
@@ -384,7 +363,6 @@ class ExitNoteViewModel : ViewModel() {
 
                 _homeLocationState.value = _homeLocationState.value.copy(radius = radius)
 
-                // Update Firestore
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
                     firestore.collection("users")
@@ -404,7 +382,6 @@ class ExitNoteViewModel : ViewModel() {
         }
     }
 
-    // ========== Location Tracking Methods ==========
 
     fun toggleLocationTracking(enabled: Boolean) {
         viewModelScope.launch {
@@ -438,7 +415,6 @@ class ExitNoteViewModel : ViewModel() {
         }
     }
 
-    // ========== Notification Methods ==========
 
     fun triggerExitNotification() {
         // TODO: Implementation in next part
@@ -450,17 +426,14 @@ class ExitNoteViewModel : ViewModel() {
         }
     }
 
-    // ========== Settings Methods ==========
 
     fun resetAppData() {
         viewModelScope.launch {
             try {
-                // Clear DataStore
                 dataStore.edit { prefs ->
                     prefs.clear()
                 }
 
-                // Reset states
                 _homeLocationState.value = HomeLocationState.NotSet
                 _isTrackingEnabled.value = false
                 _lastExitTime.value = null
@@ -478,7 +451,6 @@ class ExitNoteViewModel : ViewModel() {
     }
 }
 
-// ========== State Classes ==========
 
 /**
  * Represents the state of the splash screen
