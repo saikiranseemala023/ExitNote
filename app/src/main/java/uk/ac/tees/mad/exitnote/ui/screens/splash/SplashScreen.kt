@@ -13,10 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,13 +27,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import uk.ac.tees.mad.exitnote.viewmodel.ExitNoteViewModel
+import uk.ac.tees.mad.exitnote.viewmodel.NavigationDestination
 
-/**
- * Splash Screen - First screen shown when app launches
- * Displays app logo and tagline, then navigates based on app state
- */
 @Composable
 fun SplashScreen(
     viewModel: ExitNoteViewModel,
@@ -42,20 +40,26 @@ fun SplashScreen(
     onNavigateToSetup: (String?) -> Unit
 ) {
     val alphaAnimation = remember { Animatable(0f) }
+    val splashState by viewModel.splashState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
-        // Fade in animation
         alphaAnimation.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 1000)
         )
 
-        // Show splash for 2 seconds
         delay(2000)
 
-        // TODO: In next sprint, check actual state from ViewModel
-        // For now, navigate to Auth screen
-        onNavigateToAuth()
+        viewModel.checkInitialState()
+    }
+
+    LaunchedEffect(splashState.shouldNavigateTo) {
+        when (splashState.shouldNavigateTo) {
+            NavigationDestination.AUTH -> onNavigateToAuth()
+            NavigationDestination.SETUP -> onNavigateToSetup(null)
+            NavigationDestination.HOME -> onNavigateToHome()
+            null -> { }
+        }
     }
 
     Box(
@@ -70,7 +74,6 @@ fun SplashScreen(
                 .alpha(alphaAnimation.value)
                 .padding(32.dp)
         ) {
-            // App Icon/Logo
             Icon(
                 imageVector = Icons.Outlined.LocationOn,
                 contentDescription = "Exit Note Logo",
@@ -80,7 +83,6 @@ fun SplashScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // App Name
             Text(
                 text = "Exit Note",
                 fontSize = 32.sp,
@@ -91,7 +93,6 @@ fun SplashScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Tagline
             Text(
                 text = "One last reminder before you go.",
                 fontSize = 16.sp,
