@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import uk.ac.tees.mad.exitnote.ui.screens.auth.AuthScreen
 import uk.ac.tees.mad.exitnote.ui.screens.home.HomeScreen
+import uk.ac.tees.mad.exitnote.ui.screens.setup.SetupLocationScreen
 
 import uk.ac.tees.mad.exitnote.ui.screens.splash.SplashScreen
 import uk.ac.tees.mad.exitnote.viewmodel.ExitNoteViewModel
@@ -74,15 +75,15 @@ fun ExitNoteNavGraph(
             )
         ) { backStackEntry ->
             val userEmail = backStackEntry.arguments?.getString(NavArgs.USER_EMAIL)
-//            SetupLocationScreen(
-//                viewModel = viewModel,
-//                userEmail = userEmail,
-//                onSetupComplete = {
-//                    navController.navigate(Routes.HOME) {
-//                        popUpTo(Routes.SETUP_LOCATION) { inclusive = true }
-//                    }
-//                }
-//            )
+            SetupLocationScreen(
+                viewModel = viewModel,
+                userEmail = userEmail,
+                onSetupComplete = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.SETUP_LOCATION) { inclusive = true }
+                    }
+                }
+            )
         }
 
         composable(route = Routes.HOME) {
