@@ -1,5 +1,7 @@
 package uk.ac.tees.mad.exitnote.ui.screens.setup
 
+import android.Manifest
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -26,9 +29,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,8 +46,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 import uk.ac.tees.mad.exitnote.viewmodel.ExitNoteViewModel
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun SetupLocationScreen(
     viewModel: ExitNoteViewModel,
@@ -50,6 +62,28 @@ fun SetupLocationScreen(
 ) {
     val homeLocationState by viewModel.homeLocationState.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+
+    val locationPermissions = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
+
+    val notificationPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS)
+    } else {
+        null
+    }
+
+    var showPermissionDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!locationPermissions.allPermissionsGranted) {
+            locationPermissions.launchMultiplePermissionRequest()
+        }
+    }
 
     SetupLocationContent(
         userEmail = userEmail,
@@ -59,13 +93,53 @@ fun SetupLocationScreen(
         capturedLongitude = homeLocationState.longitude,
         currentRadius = homeLocationState.radius,
         locationName = homeLocationState.locationName,
-        onCaptureLocation = { viewModel.captureCurrentLocation() },
+        errorMessage = errorMessage,
+        hasLocationPermission = locationPermissions.allPermissionsGranted,
+        onCaptureLocation = {
+            if (locationPermissions.allPermissionsGranted) {
+                viewModel.captureCurrentLocation()
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermission?.launchPermissionRequest()
+                }
+            } else {
+                showPermissionDialog = true
+            }
+        },
         onRadiusChange = { viewModel.updateGeofenceRadius(it) },
         onSaveLocation = { lat, lon, radius ->
             viewModel.setHomeLocation(lat, lon, radius)
             onSetupComplete()
+        },
+        onRequestPermission = {
+            locationPermissions.launchMultiplePermissionRequest()
         }
     )
+
+    if (showPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionDialog = false },
+            title = { Text("Location Permission Required") },
+            text = {
+                Text("This app needs location permission to set your home location and detect when you leave.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionDialog = false
+                        locationPermissions.launchMultiplePermissionRequest()
+                    }
+                ) {
+                    Text("Grant Permission")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -77,9 +151,12 @@ private fun SetupLocationContent(
     capturedLongitude: Double?,
     currentRadius: Float,
     locationName: String?,
+    errorMessage: String?,
+    hasLocationPermission: Boolean,
     onCaptureLocation: () -> Unit,
     onRadiusChange: (Float) -> Unit,
-    onSaveLocation: (Double, Double, Float) -> Unit
+    onSaveLocation: (Double, Double, Float) -> Unit,
+    onRequestPermission: () -> Unit
 ) {
     var radius by remember { mutableFloatStateOf(currentRadius) }
 
@@ -128,6 +205,51 @@ private fun SetupLocationContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            if (!hasLocationPermission) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFFFEBEE)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                    ) {
+                        Text(
+                            text = "⚠️ Permission Required",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFE74C3C)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Location permission is required to set your home location.",
+                            fontSize = 14.sp,
+                            color = Color(0xFF8B1A1A)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = onRequestPermission,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFE74C3C)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Grant Permission")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -165,7 +287,7 @@ private fun SetupLocationContent(
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = !isLoading && !isCapturing
+                        enabled = !isLoading && !isCapturing && hasLocationPermission
                     ) {
                         if (isCapturing) {
                             CircularProgressIndicator(
@@ -176,14 +298,32 @@ private fun SetupLocationContent(
                             Icon(
                                 imageVector = Icons.Default.MyLocation,
                                 contentDescription = "Capture Location",
-                                tint = Color(0xFF6B7FD7)
+                                tint = if (hasLocationPermission) Color(0xFF6B7FD7) else Color(0xFFBDC3C7)
                             )
                             Spacer(modifier = Modifier.size(8.dp))
                             Text(
                                 text = "Capture Current Location",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF6B7FD7)
+                                color = if (hasLocationPermission) Color(0xFF6B7FD7) else Color(0xFFBDC3C7)
+                            )
+                        }
+                    }
+
+                    if (errorMessage != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFFFFEBEE)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = errorMessage,
+                                fontSize = 13.sp,
+                                color = Color(0xFFE74C3C),
+                                modifier = Modifier.padding(12.dp)
                             )
                         }
                     }
@@ -419,26 +559,12 @@ fun SetupLocationInitialPreview() {
         capturedLongitude = null,
         currentRadius = 250f,
         locationName = null,
+        errorMessage = null,
+        hasLocationPermission = true,
         onCaptureLocation = {},
         onRadiusChange = {},
-        onSaveLocation = { _, _, _ -> }
-    )
-}
-
-@Preview(showBackground = true, name = "Exit Note – Setup (Capturing)")
-@Composable
-fun SetupLocationCapturingPreview() {
-    SetupLocationContent(
-        userEmail = "user@example.com",
-        isLoading = false,
-        isCapturing = true,
-        capturedLatitude = null,
-        capturedLongitude = null,
-        currentRadius = 250f,
-        locationName = null,
-        onCaptureLocation = {},
-        onRadiusChange = {},
-        onSaveLocation = { _, _, _ -> }
+        onSaveLocation = { _, _, _ -> },
+        onRequestPermission = {}
     )
 }
 
@@ -453,25 +579,11 @@ fun SetupLocationCapturedPreview() {
         capturedLongitude = -74.005974,
         currentRadius = 300f,
         locationName = "New York, NY",
+        errorMessage = null,
+        hasLocationPermission = true,
         onCaptureLocation = {},
         onRadiusChange = {},
-        onSaveLocation = { _, _, _ -> }
-    )
-}
-
-@Preview(showBackground = true, name = "Exit Note – Setup (Saving)")
-@Composable
-fun SetupLocationSavingPreview() {
-    SetupLocationContent(
-        userEmail = "newuser@example.com",
-        isLoading = true,
-        isCapturing = false,
-        capturedLatitude = 28.6139,
-        capturedLongitude = 77.2090,
-        currentRadius = 500f,
-        locationName = "Delhi, India",
-        onCaptureLocation = {},
-        onRadiusChange = {},
-        onSaveLocation = { _, _, _ -> }
+        onSaveLocation = { _, _, _ -> },
+        onRequestPermission = {}
     )
 }
