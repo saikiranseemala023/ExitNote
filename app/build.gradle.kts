@@ -44,6 +44,8 @@ dependencies {
     implementation(libs.firebase.firestore)
     val nav_version = "2.9.7"
     implementation("com.google.accompanist:accompanist-permissions:0.37.3")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("androidx.datastore:datastore-preferences:1.2.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:$nav_version")
