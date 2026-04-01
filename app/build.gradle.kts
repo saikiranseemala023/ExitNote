@@ -52,6 +52,8 @@ dependencies {
     // If this project only uses Java source, use the Java annotationProcessor
     // No additional plugins are necessary
     annotationProcessor("androidx.room:room-compiler:$room_version")
+    val work_version = "2.11.1"
+    implementation("androidx.work:work-runtime-ktx:${work_version}")
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     val nav_version = "2.9.7"
