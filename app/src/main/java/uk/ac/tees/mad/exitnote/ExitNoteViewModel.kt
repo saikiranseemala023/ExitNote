@@ -13,6 +13,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FirebaseFirestore
@@ -23,9 +26,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import uk.ac.tees.mad.exitnote.ExitNoteApplication
+import uk.ac.tees.mad.exitnote.data.local.ExitNoteDatabase
+import uk.ac.tees.mad.exitnote.data.remote.NominatimApi
+import uk.ac.tees.mad.exitnote.service.LocationManager
+import uk.ac.tees.mad.exitnote.service.LocationMonitorWorker
+import uk.ac.tees.mad.exitnote.service.NotificationHelper
+import java.util.concurrent.TimeUnit
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "exit_note_prefs")
-
 
 class ExitNoteViewModel : ViewModel() {
 
@@ -33,6 +41,11 @@ class ExitNoteViewModel : ViewModel() {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
     private val dataStore = context.dataStore
+    private val locationManager = LocationManager(context)
+    private val notificationHelper = NotificationHelper(context)
+    private val database = ExitNoteDatabase.getDatabase(context)
+    private val nominatimApi = NominatimApi.create()
+    private val workManager = WorkManager.getInstance(context)
 
     private object PrefsKeys {
         val HOME_LATITUDE = doublePreferencesKey("home_latitude")
@@ -76,9 +89,10 @@ class ExitNoteViewModel : ViewModel() {
         loadStoredData()
     }
 
-    fun setError(msg : String){
-_errorMessage.value = msg
+    fun setError(msg: String) {
+        _errorMessage.value = msg
     }
+
     private fun checkAuthState() {
         viewModelScope.launch {
             val currentUser = auth.currentUser
@@ -123,7 +137,6 @@ _errorMessage.value = msg
         }
     }
 
-
     fun checkInitialState() {
         viewModelScope.launch {
             _splashState.value = SplashState.Loading
@@ -161,7 +174,6 @@ _errorMessage.value = msg
             }
         }
     }
-
 
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
@@ -282,6 +294,8 @@ _errorMessage.value = msg
     fun signOut() {
         viewModelScope.launch {
             try {
+                stopLocationTracking()
+
                 auth.signOut()
                 _userState.value = UserState.NotAuthenticated
                 _authState.value = AuthState.Initial
@@ -291,6 +305,9 @@ _errorMessage.value = msg
                     prefs.clear()
                 }
 
+                database.locationHistoryDao().deleteAll()
+                database.exitEventDao().deleteAll()
+
                 Log.d("ExitNoteVM", "User signed out successfully")
             } catch (e: Exception) {
                 Log.e("ExitNoteVM", "Sign out error: ${e.message}")
@@ -299,14 +316,41 @@ _errorMessage.value = msg
         }
     }
 
-
     fun captureCurrentLocation() {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             _homeLocationState.value = _homeLocationState.value.copy(isCapturing = true)
-            // TODO: Implementation with location services in next part
-            _isLoading.value = false
+
+            try {
+                val location = locationManager.getCurrentLocation()
+
+                if (location != null) {
+                    _currentLocation.value = LocationData(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        accuracy = location.accuracy,
+                        timestamp = System.currentTimeMillis()
+                    )
+
+                    _homeLocationState.value = _homeLocationState.value.copy(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        isCapturing = false
+                    )
+
+                    getLocationName(location.latitude, location.longitude)
+                } else {
+                    _errorMessage.value = "Could not get location. Please check permissions."
+                    _homeLocationState.value = _homeLocationState.value.copy(isCapturing = false)
+                }
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error capturing location: ${e.message}")
+                _errorMessage.value = "Error: ${e.message}"
+                _homeLocationState.value = _homeLocationState.value.copy(isCapturing = false)
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
@@ -337,7 +381,7 @@ _errorMessage.value = msg
                         .await()
                 }
 
-                _homeLocationState.value = HomeLocationState(
+                _homeLocationState.value = _homeLocationState.value.copy(
                     latitude = latitude,
                     longitude = longitude,
                     radius = radius,
@@ -378,10 +422,30 @@ _errorMessage.value = msg
 
     fun getLocationName(latitude: Double, longitude: Double) {
         viewModelScope.launch {
-            // TODO: Implementation with OpenStreetMap API in next part
+            try {
+                val response = nominatimApi.reverseGeocode(latitude, longitude)
+                val locationName = response.address?.let { address ->
+                    listOfNotNull(
+                        address.city ?: address.town ?: address.village,
+                        address.state,
+                        address.country
+                    ).joinToString(", ")
+                } ?: response.displayName?.take(50)
+
+                if (locationName != null) {
+                    _homeLocationState.value = _homeLocationState.value.copy(
+                        locationName = locationName
+                    )
+
+                    dataStore.edit { prefs ->
+                        prefs[PrefsKeys.HOME_LOCATION_NAME] = locationName
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error getting location name: ${e.message}")
+            }
         }
     }
-
 
     fun toggleLocationTracking(enabled: Boolean) {
         viewModelScope.launch {
@@ -392,13 +456,18 @@ _errorMessage.value = msg
 
                 _isTrackingEnabled.value = enabled
 
-                // Update Firestore
                 val currentUser = auth.currentUser
                 if (currentUser != null) {
                     firestore.collection("users")
                         .document(currentUser.uid)
                         .update("trackingEnabled", enabled)
                         .await()
+                }
+
+                if (enabled) {
+                    startLocationTracking()
+                } else {
+                    stopLocationTracking()
                 }
 
                 Log.d("ExitNoteVM", "Tracking ${if (enabled) "enabled" else "disabled"}")
@@ -409,30 +478,85 @@ _errorMessage.value = msg
         }
     }
 
+    private fun startLocationTracking() {
+        val workRequest = PeriodicWorkRequestBuilder<LocationMonitorWorker>(
+            15, TimeUnit.MINUTES
+        ).build()
+
+        workManager.enqueueUniquePeriodicWork(
+            "LocationMonitoring",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            workRequest
+        )
+
+        Log.d("ExitNoteVM", "Location tracking started")
+    }
+
+    private fun stopLocationTracking() {
+        workManager.cancelUniqueWork("LocationMonitoring")
+        Log.d("ExitNoteVM", "Location tracking stopped")
+    }
+
     fun checkIfOutsideGeofence() {
         viewModelScope.launch {
-            // TODO: Implementation with Haversine formula in next part
+            try {
+                val currentLoc = locationManager.getCurrentLocation() ?: return@launch
+                val homeState = _homeLocationState.value
+
+                if (!homeState.isSet || homeState.latitude == null || homeState.longitude == null) {
+                    return@launch
+                }
+
+                val isOutside = locationManager.isOutsideGeofence(
+                    currentLoc.latitude,
+                    currentLoc.longitude,
+                    homeState.latitude,
+                    homeState.longitude,
+                    homeState.radius
+                )
+
+                if (isOutside && _isTrackingEnabled.value) {
+                    triggerExitNotification()
+                }
+            } catch (e: Exception) {
+                Log.e("ExitNoteVM", "Error checking geofence: ${e.message}")
+            }
         }
     }
 
-
     fun triggerExitNotification() {
-        // TODO: Implementation in next part
+        try {
+            notificationHelper.showExitNotification()
+
+            viewModelScope.launch {
+                val currentTime = System.currentTimeMillis()
+                dataStore.edit { prefs ->
+                    prefs[PrefsKeys.LAST_EXIT_TIME] = currentTime
+                }
+                _lastExitTime.value = currentTime
+            }
+        } catch (e: Exception) {
+            Log.e("ExitNoteVM", "Error triggering notification: ${e.message}")
+        }
     }
 
     fun snoozeNotification(minutes: Int) {
         viewModelScope.launch {
-            // TODO: Implementation in next part
+            notificationHelper.cancelNotification()
         }
     }
-
 
     fun resetAppData() {
         viewModelScope.launch {
             try {
+                stopLocationTracking()
+
                 dataStore.edit { prefs ->
                     prefs.clear()
                 }
+
+                database.locationHistoryDao().deleteAll()
+                database.exitEventDao().deleteAll()
 
                 _homeLocationState.value = HomeLocationState.NotSet
                 _isTrackingEnabled.value = false
@@ -451,10 +575,6 @@ _errorMessage.value = msg
     }
 }
 
-
-/**
- * Represents the state of the splash screen
- */
 data class SplashState(
     val isLoading: Boolean = true,
     val shouldNavigateTo: NavigationDestination? = null
@@ -470,9 +590,6 @@ enum class NavigationDestination {
     HOME
 }
 
-/**
- * Represents authentication state
- */
 data class AuthState(
     val isSigningIn: Boolean = false,
     val isSigningUp: Boolean = false,
@@ -484,9 +601,6 @@ data class AuthState(
     }
 }
 
-/**
- * Represents user authentication status
- */
 data class UserState(
     val userId: String? = null,
     val email: String? = null,
@@ -498,13 +612,10 @@ data class UserState(
     }
 }
 
-/**
- * Represents home location setup state
- */
 data class HomeLocationState(
     val latitude: Double? = null,
     val longitude: Double? = null,
-    val radius: Float = 250f, // Default 250 meters
+    val radius: Float = 250f,
     val locationName: String? = null,
     val isSet: Boolean = false,
     val isCapturing: Boolean = false
@@ -514,9 +625,6 @@ data class HomeLocationState(
     }
 }
 
-/**
- * Represents location data
- */
 data class LocationData(
     val latitude: Double,
     val longitude: Double,
@@ -524,9 +632,6 @@ data class LocationData(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-/**
- * Represents geofence status
- */
 data class GeofenceStatus(
     val isInside: Boolean = true,
     val distance: Double? = null,
