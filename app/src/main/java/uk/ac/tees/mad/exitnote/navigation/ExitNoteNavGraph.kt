@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import uk.ac.tees.mad.exitnote.ui.screens.auth.AuthScreen
 import uk.ac.tees.mad.exitnote.ui.screens.home.HomeScreen
+import uk.ac.tees.mad.exitnote.ui.screens.settings.SettingsScreen
 import uk.ac.tees.mad.exitnote.ui.screens.setup.SetupLocationScreen
 
 import uk.ac.tees.mad.exitnote.ui.screens.splash.SplashScreen
@@ -99,17 +100,17 @@ fun ExitNoteNavGraph(
         }
 
         composable(route = Routes.SETTINGS) {
-//            SettingsScreen(
-//                viewModel = viewModel,
-//                onNavigateBack = {
-//                    navController.popBackStack()
-//                },
-//                onNavigateToAuth = {
-//                    navController.navigate(Routes.AUTH) {
-//                        popUpTo(Routes.HOME) { inclusive = true }
-//                    }
-//                }
-//            )
+            SettingsScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToAuth = {
+                    navController.navigate(Routes.AUTH) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                    }
+                }
+            )
         }
     }
 }
