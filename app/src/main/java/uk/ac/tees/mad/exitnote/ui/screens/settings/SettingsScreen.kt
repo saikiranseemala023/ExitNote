@@ -17,10 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,15 +56,25 @@ fun SettingsScreen(
 ) {
     val userState by viewModel.userState.collectAsStateWithLifecycle()
     val homeLocationState by viewModel.homeLocationState.collectAsStateWithLifecycle()
+    val isTrackingEnabled by viewModel.isTrackingEnabled.collectAsStateWithLifecycle()
 
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showTestDialog by remember { mutableStateOf(false) }
 
     SettingsContent(
         userEmail = userState.email,
         homeLocationSet = homeLocationState.isSet,
+        isTrackingEnabled = isTrackingEnabled,
         onNavigateBack = onNavigateBack,
         onEditLocation = onNavigateBack,
+        onTestNotification = {
+            viewModel.triggerExitNotification()
+            showTestDialog = true
+        },
+        onManualCheck = {
+            viewModel.checkIfOutsideGeofence()
+        },
         onSignOut = { showSignOutDialog = true },
         onResetData = { showResetDialog = true }
     )
@@ -115,14 +127,30 @@ fun SettingsScreen(
             }
         )
     }
+
+    if (showTestDialog) {
+        AlertDialog(
+            onDismissRequest = { showTestDialog = false },
+            title = { Text("Test Notification Sent") },
+            text = { Text("Check your notification tray for the exit reminder notification!") },
+            confirmButton = {
+                TextButton(onClick = { showTestDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun SettingsContent(
     userEmail: String?,
     homeLocationSet: Boolean,
+    isTrackingEnabled: Boolean,
     onNavigateBack: () -> Unit,
     onEditLocation: () -> Unit,
+    onTestNotification: () -> Unit,
+    onManualCheck: () -> Unit,
     onSignOut: () -> Unit,
     onResetData: () -> Unit
 ) {
@@ -265,6 +293,50 @@ private fun SettingsContent(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFF3E0)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Testing & Debug",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFE67E22),
+                        modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 12.dp)
+                    )
+
+                    SettingsItem(
+                        icon = Icons.Default.Notifications,
+                        title = "Test Notification",
+                        subtitle = "Trigger exit reminder notification now",
+                        onClick = onTestNotification,
+                        textColor = Color(0xFFE67E22)
+                    )
+
+                    Divider(
+                        color = Color(0xFFFBE9E7),
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+
+                    SettingsItem(
+                        icon = Icons.Default.BugReport,
+                        title = "Check Location Now",
+                        subtitle = "Manually check if outside geofence (${if (isTrackingEnabled) "Tracking ON" else "Tracking OFF"})",
+                        onClick = onManualCheck,
+                        textColor = Color(0xFFE67E22)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
                     containerColor = Color.White
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -396,8 +468,11 @@ fun SettingsScreenPreview() {
     SettingsContent(
         userEmail = "user@example.com",
         homeLocationSet = true,
+        isTrackingEnabled = true,
         onNavigateBack = {},
         onEditLocation = {},
+        onTestNotification = {},
+        onManualCheck = {},
         onSignOut = {},
         onResetData = {}
     )

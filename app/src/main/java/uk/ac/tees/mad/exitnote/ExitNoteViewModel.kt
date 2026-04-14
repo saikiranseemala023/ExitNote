@@ -1,6 +1,8 @@
 package uk.ac.tees.mad.exitnote.viewmodel
 
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -13,9 +15,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FirebaseFirestore
@@ -27,11 +26,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import uk.ac.tees.mad.exitnote.ExitNoteApplication
 import uk.ac.tees.mad.exitnote.data.local.ExitNoteDatabase
+import uk.ac.tees.mad.exitnote.data.local.exitNoteDataStore
 import uk.ac.tees.mad.exitnote.data.remote.NominatimApi
 import uk.ac.tees.mad.exitnote.service.LocationManager
-import uk.ac.tees.mad.exitnote.service.LocationMonitorWorker
+import uk.ac.tees.mad.exitnote.service.LocationTrackingService
 import uk.ac.tees.mad.exitnote.service.NotificationHelper
-import java.util.concurrent.TimeUnit
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "exit_note_prefs")
 
@@ -40,12 +39,11 @@ class ExitNoteViewModel : ViewModel() {
     private val context: Context = ExitNoteApplication.instance.applicationContext
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
-    private val dataStore = context.dataStore
+    private val dataStore = context.exitNoteDataStore
     private val locationManager = LocationManager(context)
     private val notificationHelper = NotificationHelper(context)
     private val database = ExitNoteDatabase.getDatabase(context)
     private val nominatimApi = NominatimApi.create()
-    private val workManager = WorkManager.getInstance(context)
 
     private object PrefsKeys {
         val HOME_LATITUDE = doublePreferencesKey("home_latitude")
@@ -479,22 +477,33 @@ class ExitNoteViewModel : ViewModel() {
     }
 
     private fun startLocationTracking() {
-        val workRequest = PeriodicWorkRequestBuilder<LocationMonitorWorker>(
-            15, TimeUnit.MINUTES
-        ).build()
+        try {
+            Log.d("ExitNoteVM", "🚀 Starting location tracking service...")
 
-        workManager.enqueueUniquePeriodicWork(
-            "LocationMonitoring",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            workRequest
-        )
+            val serviceIntent = Intent(context, LocationTrackingService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
 
-        Log.d("ExitNoteVM", "Location tracking started")
+            Log.d("ExitNoteVM", "✅ Foreground Service started - monitoring every 20 seconds")
+        } catch (e: Exception) {
+            Log.e("ExitNoteVM", "❌ Error starting tracking: ${e.message}", e)
+        }
     }
 
     private fun stopLocationTracking() {
-        workManager.cancelUniqueWork("LocationMonitoring")
-        Log.d("ExitNoteVM", "Location tracking stopped")
+        try {
+            Log.d("ExitNoteVM", "🛑 Stopping location tracking service...")
+
+            val serviceIntent = Intent(context, LocationTrackingService::class.java)
+            context.stopService(serviceIntent)
+
+            Log.d("ExitNoteVM", "✅ Location tracking stopped")
+        } catch (e: Exception) {
+            Log.e("ExitNoteVM", "❌ Error stopping tracking: ${e.message}", e)
+        }
     }
 
     fun checkIfOutsideGeofence() {

@@ -7,15 +7,13 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.preferencesDataStore
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.first
 import uk.ac.tees.mad.exitnote.data.local.ExitEventEntity
 import uk.ac.tees.mad.exitnote.data.local.ExitNoteDatabase
 import uk.ac.tees.mad.exitnote.data.local.LocationHistoryEntity
-
-private val Context.dataStore by preferencesDataStore(name = "exit_note_prefs")
+import uk.ac.tees.mad.exitnote.data.local.exitNoteDataStore
 
 class LocationMonitorWorker(
     context: Context,
@@ -30,29 +28,41 @@ class LocationMonitorWorker(
         Log.d("LocationWorker", "Worker started - checking location")
 
         return try {
-            val prefs = applicationContext.dataStore.data.first()
+            val prefs = applicationContext.exitNoteDataStore.data.first()
 
-            val isTrackingEnabled = prefs[booleanPreferencesKey("is_tracking_enabled")] ?: false
-            val isHomeSet = prefs[booleanPreferencesKey("is_home_set")] ?: false
+            val isTrackingEnabled =
+                prefs[booleanPreferencesKey("is_tracking_enabled")] ?: false
+            val isHomeSet =
+                prefs[booleanPreferencesKey("is_home_set")] ?: false
 
-            Log.d("LocationWorker", "Tracking enabled: $isTrackingEnabled, Home set: $isHomeSet")
+            Log.d(
+                "LocationWorker",
+                "Tracking enabled: $isTrackingEnabled, Home set: $isHomeSet"
+            )
 
             if (!isTrackingEnabled || !isHomeSet) {
                 Log.d("LocationWorker", "Tracking disabled or home not set, skipping")
                 return Result.success()
             }
 
-            val homeLat = prefs[doublePreferencesKey("home_latitude")] ?: return Result.success()
-            val homeLon = prefs[doublePreferencesKey("home_longitude")] ?: return Result.success()
-            val radius = prefs[floatPreferencesKey("home_radius")] ?: 250f
-            val lastExitTime = prefs[longPreferencesKey("last_exit_time")] ?: 0L
+            val homeLat =
+                prefs[doublePreferencesKey("home_latitude")] ?: return Result.success()
+            val homeLon =
+                prefs[doublePreferencesKey("home_longitude")] ?: return Result.success()
+            val radius =
+                prefs[floatPreferencesKey("home_radius")] ?: 250f
+            val lastExitTime =
+                prefs[longPreferencesKey("last_exit_time")] ?: 0L
 
             Log.d("LocationWorker", "Home: ($homeLat, $homeLon), Radius: $radius")
 
             val currentLocation = locationManager.getCurrentLocation()
 
             if (currentLocation != null) {
-                Log.d("LocationWorker", "Current location: (${currentLocation.latitude}, ${currentLocation.longitude})")
+                Log.d(
+                    "LocationWorker",
+                    "Current location: (${currentLocation.latitude}, ${currentLocation.longitude})"
+                )
 
                 val distance = locationManager.calculateDistance(
                     currentLocation.latitude,
@@ -80,12 +90,16 @@ class LocationMonitorWorker(
                 if (isOutside) {
                     val currentTime = System.currentTimeMillis()
                     val timeSinceLastExit = currentTime - lastExitTime
-                    val cooldownPeriod = 600000L
+                    val cooldownPeriod = 600_000L // 10 minutes
 
-                    Log.d("LocationWorker", "Time since last exit: ${timeSinceLastExit / 1000} seconds")
+                    Log.d(
+                        "LocationWorker",
+                        "Time since last exit: ${timeSinceLastExit / 1000} seconds"
+                    )
 
                     if (timeSinceLastExit > cooldownPeriod) {
                         Log.d("LocationWorker", "Triggering notification!")
+
                         notificationHelper.showExitNotification()
 
                         database.exitEventDao().insertExitEvent(
@@ -98,8 +112,8 @@ class LocationMonitorWorker(
                             )
                         )
 
-                        applicationContext.dataStore.edit { prefs ->
-                            prefs[longPreferencesKey("last_exit_time")] = currentTime
+                        applicationContext.exitNoteDataStore.edit { prefsEdit ->
+                            prefsEdit[longPreferencesKey("last_exit_time")] = currentTime
                         }
 
                         Log.d("LocationWorker", "Exit event saved and notification sent")
@@ -115,8 +129,9 @@ class LocationMonitorWorker(
 
             Result.success()
         } catch (e: Exception) {
-            Log.e("LocationWorker", "Error in worker: ${e.message}", e)
-            Result.retry()
+            // ✅ Prevent infinite retry loop for logic errors
+            Log.e("LocationWorker", "Fatal worker error", e)
+            Result.failure()
         }
     }
 }
