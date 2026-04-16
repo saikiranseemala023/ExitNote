@@ -1,11 +1,15 @@
 package uk.ac.tees.mad.exitnote.data.remote
 
-
 import com.google.gson.annotations.SerializedName
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.Query
+
+// --------------------
+// RESPONSE MODELS
+// --------------------
 
 data class NominatimResponse(
     @SerializedName("display_name")
@@ -27,7 +31,16 @@ data class Address(
     val country: String?
 )
 
+// --------------------
+// API INTERFACE
+// --------------------
+
 interface NominatimApi {
+
+    @Headers(
+        "User-Agent: ExitNote-Android/1.0 (student@student.tees.ac.uk)",
+        "Referer: https://uk.ac.tees.mad.exitnote"
+    )
     @GET("reverse")
     suspend fun reverseGeocode(
         @Query("lat") latitude: Double,
@@ -37,6 +50,7 @@ interface NominatimApi {
     ): NominatimResponse
 
     companion object {
+
         private const val BASE_URL = "https://nominatim.openstreetmap.org/"
 
         fun create(): NominatimApi {
