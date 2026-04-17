@@ -7,9 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.Query
 
-// --------------------
-// RESPONSE MODELS
-// --------------------
+
 
 data class NominatimResponse(
     @SerializedName("display_name")
@@ -31,9 +29,6 @@ data class Address(
     val country: String?
 )
 
-// --------------------
-// API INTERFACE
-// --------------------
 
 interface NominatimApi {
 
