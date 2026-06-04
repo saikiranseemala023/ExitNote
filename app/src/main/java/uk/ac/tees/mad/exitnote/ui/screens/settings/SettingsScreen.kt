@@ -408,7 +408,7 @@ private fun SettingsContent(
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "Exit Note v1.0.0\nMade with ❤️",
+                text = "Exit Note v1.0.0",
                 fontSize = 13.sp,
                 color = Color(0xFF95A5A6),
                 modifier = Modifier.fillMaxWidth(),
