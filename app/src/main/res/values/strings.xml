@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Exit Note</string>
+    <string name="app_version">1.0.0</string>
+    <string name="app_tagline">One last reminder before you go.</string>
 </resources>
