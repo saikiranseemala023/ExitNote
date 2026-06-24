@@ -288,7 +288,7 @@ private fun HomeScreenContent(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "No home location set",
+                                text = "Tap below to set your home location and enable exit reminders",
                                 fontSize = 14.sp,
                                 color = Color(0xFF7F8C8D)
                             )
