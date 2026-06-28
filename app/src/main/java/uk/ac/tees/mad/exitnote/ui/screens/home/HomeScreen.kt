@@ -132,7 +132,7 @@ private fun HomeScreenContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
+                        contentDescription = "Open Settings",
                         tint = Color(0xFF6B7FD7)
                     )
                 }
