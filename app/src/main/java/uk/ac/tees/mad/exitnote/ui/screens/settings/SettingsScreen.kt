@@ -293,50 +293,6 @@ private fun SettingsContent(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFFF3E0)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Testing & Debug",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFE67E22),
-                        modifier = Modifier.padding(20.dp, 20.dp, 20.dp, 12.dp)
-                    )
-
-                    SettingsItem(
-                        icon = Icons.Default.Notifications,
-                        title = "Test Notification",
-                        subtitle = "Trigger exit reminder notification now",
-                        onClick = onTestNotification,
-                        textColor = Color(0xFFE67E22)
-                    )
-
-                    Divider(
-                        color = Color(0xFFFBE9E7),
-                        modifier = Modifier.padding(horizontal = 20.dp)
-                    )
-
-                    SettingsItem(
-                        icon = Icons.Default.BugReport,
-                        title = "Check Location Now",
-                        subtitle = "Manually check if outside geofence (${if (isTrackingEnabled) "Tracking ON" else "Tracking OFF"})",
-                        onClick = onManualCheck,
-                        textColor = Color(0xFFE67E22)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
                     containerColor = Color.White
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
