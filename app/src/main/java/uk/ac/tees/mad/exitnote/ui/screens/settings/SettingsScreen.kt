@@ -17,12 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -68,13 +66,6 @@ fun SettingsScreen(
         isTrackingEnabled = isTrackingEnabled,
         onNavigateBack = onNavigateBack,
         onEditLocation = onNavigateBack,
-        onTestNotification = {
-            viewModel.triggerExitNotification()
-            showTestDialog = true
-        },
-        onManualCheck = {
-            viewModel.checkIfOutsideGeofence()
-        },
         onSignOut = { showSignOutDialog = true },
         onResetData = { showResetDialog = true }
     )
@@ -149,8 +140,6 @@ private fun SettingsContent(
     isTrackingEnabled: Boolean,
     onNavigateBack: () -> Unit,
     onEditLocation: () -> Unit,
-    onTestNotification: () -> Unit,
-    onManualCheck: () -> Unit,
     onSignOut: () -> Unit,
     onResetData: () -> Unit
 ) {
@@ -427,8 +416,6 @@ fun SettingsScreenPreview() {
         isTrackingEnabled = true,
         onNavigateBack = {},
         onEditLocation = {},
-        onTestNotification = {},
-        onManualCheck = {},
         onSignOut = {},
         onResetData = {}
     )
