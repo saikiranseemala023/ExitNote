@@ -400,7 +400,7 @@ private fun SettingsItem(
             )
             Text(
                 text = subtitle,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 color = Color(0xFF7F8C8D)
             )
         }
